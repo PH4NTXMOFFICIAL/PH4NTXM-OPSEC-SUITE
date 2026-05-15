@@ -1,0 +1,102 @@
+#!/bin/bash
+
+RESET="\033[0m"
+BOLD="\033[1m"
+PH4NTXM_CYAN="\033[38;2;0;171;255m"
+PH4NTXM_MAGENTA="\033[38;2;255;61;251m"
+GREEN="\033[38;2;68;209;122m"
+AMBER="\033[38;2;255;176;32m"
+RED="\033[38;2;255;77;90m"
+GRAY="\033[38;2;165;175;195m"
+LINE_WIDTH=78
+
+separator() { printf "${GRAY}$(printf '─%.0s' $(seq 1 $LINE_WIDTH))${RESET}\n"; }
+section() { printf "\n"; separator; printf "${PH4NTXM_CYAN}[ $1 ]${RESET}\n"; separator; }
+status_tag() {
+    case $1 in
+        "good") echo -ne "${GREEN}[OK]${RESET}" ;;
+        "warn") echo -ne "${AMBER}[WARN]${RESET}" ;;
+        "bad")  echo -ne "${RED}[CRIT]${RESET}" ;;
+        "live") echo -ne "${PH4NTXM_MAGENTA}[LIVE]${RESET}" ;;
+        *)      echo -ne "${GRAY}[INFO]${RESET}" ;;
+    esac
+}
+
+while true; do
+    output=$(
+        section "PH4NTXM OPSEC CONNWATCH"
+        echo -e "$(status_tag "live") STATUS: ${GREEN}MONITORING ACTIVE${RESET}"
+        echo -e "$(status_tag "info") LOG: ${GRAY}/run/ph4ntxm-opsec-connwatch/connwatch-stats.log${RESET}"
+        
+        section "LIVE NETWORK RECONNAISSANCE"
+        
+        HIGH_RISK_COUNT=0
+        TOTAL_IPS=0
+
+        if [ -s /dev/shm/ph4ntxm-opsec-connwatch-stats.log ]; then
+            printf "${BOLD}%-15s | %-5s | %-22s | %-10s${RESET}\n" "IP ADDRESS" "HITS" "TARGET PORTS" "STATUS"
+            echo -e "${BOLD}----------------|-------|------------------------|------------${RESET}"
+            
+            while read -r line; do
+                if [[ ! -z "$line" && "$line" != *"IP ADDRESS"* && "$line" != *"---"* ]]; then
+                    ((TOTAL_IPS++))
+                    ip=$(echo "$line" | cut -d'|' -f1 | xargs)
+                    hits=$(echo "$line" | cut -d'|' -f2 | xargs)
+                    ports=$(echo "$line" | cut -d'|' -f3 | xargs)
+                    
+                    if [ ${#ip} -gt 15 ]; then
+                        ip="${ip:0:12}..."
+                    fi
+
+                    if [ "$hits" -gt 99999 ]; then
+                        hits="99k+"
+                    fi
+
+                    if [ ${#ports} -gt 22 ]; then
+                        ports="${ports:0:19}..."
+                    fi
+                    
+                    if [ "$hits" != "99k+" ] && [ "$hits" -gt 50 ]; then
+                        ((HIGH_RISK_COUNT++))
+                        printf "${RED}%-15s${RESET} ${BOLD}|${RESET} ${AMBER}%-5s${RESET} ${BOLD}|${RESET} ${PH4NTXM_CYAN}%-22s${RESET} ${BOLD}|${RESET} ${RED}[CRIT]${RESET}\n" "$ip" "$hits" "$ports"
+                    else
+                        printf "${GREEN}%-15s${RESET} ${BOLD}|${RESET} ${AMBER}%-5s${RESET} ${BOLD}|${RESET} ${PH4NTXM_CYAN}%-22s${RESET} ${BOLD}|${RESET} $(status_tag "good")\n" "$ip" "$hits" "$ports"
+                    fi
+                fi
+            done < <(tail -n +3 /dev/shm/ph4ntxm-opsec-connwatch-stats.log | sort -rn -t '|' -k 2 | head -n 15)
+        else
+            echo -e "$(status_tag "good") FINDING: NO NEARBY THREATS DETECTED"
+        fi
+
+        section "SYSTEM ASSESSMENT"
+        if [ $HIGH_RISK_COUNT -gt 0 ]; then
+            echo -e "$(status_tag "bad") SCORE: $((100 - (HIGH_RISK_COUNT * 10)))"
+            echo -e "$(status_tag "bad") VERDICT: HIGH RISK DETECTED"
+        elif [ $TOTAL_IPS -gt 0 ]; then
+            echo -e "$(status_tag "warn") SCORE: 85"
+            echo -e "$(status_tag "warn") VERDICT: DEGRADED / NOISY"
+        else
+            echo -e "$(status_tag "good") SCORE: 100"
+            echo -e "$(status_tag "good") VERDICT: SAFE"
+        fi
+
+        section "FINDINGS"
+        if [ $TOTAL_IPS -eq 0 ]; then
+            echo -e "$(status_tag "good") FINDING: NONE"
+        else
+            if [ $HIGH_RISK_COUNT -gt 0 ]; then
+                echo -e "$(status_tag "bad") FINDING: $HIGH_RISK_COUNT HOST(S) EXCEEDED SAFETY THRESHOLD"
+            fi
+            echo -e "$(status_tag "warn") FINDING: $TOTAL_IPS ACTIVE PROBE(S) IDENTIFIED"
+            echo -e "$(status_tag "info") FINDING: ANALYZING TARGET PORT ENTROPY"
+        fi
+
+        separator
+        echo -e "${GRAY}Press Ctrl+C to exit.${RESET}"
+    )
+
+    clear
+    echo -e "$output"
+    
+    sleep 1
+done

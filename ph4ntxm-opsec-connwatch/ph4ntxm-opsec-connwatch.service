@@ -1,0 +1,10 @@
+[Unit]
+Description=PH4NTXM OpSec ConnWatch
+After=network.target display-manager.service
+
+[Service]
+ExecStart=/bin/bash /usr/local/sbin/ph4ntxm-opsec-connwatch.sh
+Restart=always
+
+[Install]
+WantedBy=graphical.target
